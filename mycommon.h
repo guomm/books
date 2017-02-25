@@ -67,47 +67,47 @@ int64 MyIO<T>::getFileLenCh(std::string _fn) {
 	return fin.tellg();
 }
 
-template<typename T>
-void MyIO<T>::getFilesUnderDir(std::string path, std::vector<MyFile>& files) {
-	//文件句柄
-	long   hFile = 0;
-	//文件信息
-	struct _finddata_t fileinfo;
-	std::string p;
-	if ((hFile = _findfirst(p.assign(path).append("\\*").c_str(), &fileinfo)) != -1)
-	{
-		do
-		{
-			//如果是目录,迭代之
-			//如果不是,加入列表
-			if ((fileinfo.attrib &  _A_SUBDIR))
-			{
-				if (strcmp(fileinfo.name, ".") != 0 && strcmp(fileinfo.name, "..") != 0)
-					MyIO<T>::getFilesUnderDir(p.assign(path).append("\\").append(fileinfo.name), files);
-			}
-			else
-			{
-				//struct _finddata_t fileTemp = fileinfo;
-				struct MyFile fileTemp = { fileinfo.size, p.assign(path).append("\\").append(fileinfo.name) };
-				files.push_back(fileTemp);
-			}
-		} while (_findnext(hFile, &fileinfo) == 0);
-		_findclose(hFile);
-	}
-}
-
-
-template<typename T>
-bool  MyIO<T>::compareFile(MyFile &file1, MyFile &file2) {
-	return file1.size < file2.size;
-}
-
-template<typename T>
-void MyIO<T>::getFilesInOrder(std::string _fn, std::vector<MyFile>& files) {
-	MyIO<T>::getFilesUnderDir(_fn, files);
-	std::sort(files.begin(), files.end(), MyIO<T>::compareFile);
-}
-
+//template<typename T>
+//void MyIO<T>::getFilesUnderDir(std::string path, std::vector<MyFile>& files) {
+//	//文件句柄
+//	long   hFile = 0;
+//	//文件信息
+//	struct _finddata_t fileinfo;
+//	std::string p;
+//	if ((hFile = _findfirst(p.assign(path).append("\\*").c_str(), &fileinfo)) != -1)
+//	{
+//		do
+//		{
+//			//如果是目录,迭代之
+//			//如果不是,加入列表
+//			if ((fileinfo.attrib &  _A_SUBDIR))
+//			{
+//				if (strcmp(fileinfo.name, ".") != 0 && strcmp(fileinfo.name, "..") != 0)
+//					MyIO<T>::getFilesUnderDir(p.assign(path).append("\\").append(fileinfo.name), files);
+//			}
+//			else
+//			{
+//				//struct _finddata_t fileTemp = fileinfo;
+//				struct MyFile fileTemp = { fileinfo.size, p.assign(path).append("\\").append(fileinfo.name) };
+//				files.push_back(fileTemp);
+//			}
+//		} while (_findnext(hFile, &fileinfo) == 0);
+//		_findclose(hFile);
+//	}
+//}
+//
+//
+//template<typename T>
+//bool  MyIO<T>::compareFile(MyFile &file1, MyFile &file2) {
+//	return file1.size < file2.size;
+//}
+//
+//template<typename T>
+//void MyIO<T>::getFilesInOrder(std::string _fn, std::vector<MyFile>& files) {
+//	MyIO<T>::getFilesUnderDir(_fn, files);
+//	std::sort(files.begin(), files.end(), MyIO<T>::compareFile);
+//}
+//
 
 
 constexpr uint64 TBUFSIZE = 1 * 1024 * 1024 * 1024; //total buffer size in bytes
@@ -209,6 +209,20 @@ struct ReNameData {
 		nodeId = nodeIdC;
 	}
 
+	ReNameData(const ReNameData &other) {
+		index = other.index;
+		nodeId = other.nodeId;
+	}
+
+	void setMember(int64 indexC, int64 nodeIdC) {
+		index = indexC;
+		nodeId = nodeIdC;
+	}
+
+	void setMember(const ReNameData &other) {
+		index = other.index;
+		nodeId = other.nodeId;
+	}
 	/*CommunicateData(ChildMetaData<T> dataC) {
 	type = dataC.type;
 	data = dataC.data;
@@ -245,8 +259,14 @@ struct ReNameData {
 		return false;
 	}
 
+	bool operator!=(const ReNameData &other) const
+	{
+		if (index != other.index)return true;
+		return false;
+	}
+
 	void printA() {
-		std::cout << "<" << index << "," << nodeId << std::endl;
+		std::cout << "<" << index << "," << nodeId << ">" << std::endl;
 	}
 }
 

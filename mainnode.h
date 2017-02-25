@@ -9,16 +9,18 @@
 //#define isGget(i) ( (recvBuf[(i)/8]&mask[(i)%8]) ? 1 : 0 )
 
 #define SADEBUG
-#define SALDEBUG
-#define SASDEBUG
+//#define SALDEBUG
+//#define SASDEBUG
+//#define RENAMEDEBUG
 
 using namespace std;
+
 class MainNode {
 private:
 	int32 numOfChild;
 	MPI_Status status;
 	int64 *sizeOfChild;
-	int64 n;
+	
 	bool *markFinish;
 	unsigned char *recvBuf;
 	int64 *sendBuf;
@@ -64,11 +66,112 @@ public:
 		computeGSA(0);
 	}
 
+	void reName(int32 level) {
+#ifdef RENAMEDEBUG
+		cout << "主节点开始重命名: numOfChild is " << numOfChild << endl;
+#endif
+		int64 rank = 0, offset = 0;
+		if (level == 0)rank = 0;
+		else rank = -1;
+
+		int64 *curBuf;
+		int64 i, j = 0;
+		//MPI_Status status;
+		for (i = 0; i < numOfChild; i++) {
+			//	sumChildSize[i] = sumSize;
+			//	sumSize += sizeOfChild[i];
+			
+			offset = i * commSize;
+			readCur[i] = offset;
+			sendCur[i] = offset;
+			MPI_Recv((char *)recvBuf + offset * sizeof(int64), commSize * sizeof(int64), MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD, &status);
+			curBuf = (int64 *)(recvBuf + offset);
+			for (j = 0; j < commSize; j++) {
+				rnData[offset + j].setMember(curBuf[j], i);
+				if (curBuf[j] == EMPTY) break;
+			}
+
+#ifdef RENAMEDEBUG
+			cout << "重命名：从 " << i << "接收到的数据：" << endl;
+			for (j = 0; j < commSize; j++) {
+				rnData[offset + j].printA();
+			}
+#endif
+		}
+
+		for (i = 0; i < numOfChild; i++) {
+			rnPQ.push(rnData[readCur[i]++]);
+			markFinish[i] = 0;
+		}
+		ReNameData temp, minVal;
+		int32 time = 0;
+		while (!rnPQ.empty()) {
+			temp = rnPQ.top();
+			i = temp.nodeId;
+			if (temp.index == EMPTY) {
+				markFinish[i] = 1;
+				//发送数据
+				MPI_Send(((char *)(sendBuf + i * commSize)), commSize * sizeof(int64), MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD);
+				rnPQ.pop();
+#ifdef RENAMEDEBUG
+				std::cout << "重命名:最后向 " << i << "发送的数据：" << endl;
+				for (j = 0; j < commSize; j++) {
+					cout << sendBuf[i * commSize + j] << endl;
+				}
+#endif
+			}
+			else {
+
+				if (minVal != temp) {
+					rank++;
+					minVal.setMember(temp);
+				}
+
+				sendBuf[i * commSize + sendCur[i]] = rank;
+				sendCur[i]++;
+				time++;
+				rnPQ.pop();
+				//rnPQ.push(rnData[i * commSize + readCur[i]]);
+				//readCur[i]++;
+
+				if (time == commSize) {
+					//发送数据
+					offset = i * commSize;
+					MPI_Send((char *)(sendBuf + offset), commSize * sizeof(int64), MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD);
+
+#ifdef RENAMEDEBUG
+					std::cout << "重命名:向 " << i << "发送的数据：" << endl;
+					for (j = 0; j < commSize; j++) {
+						cout << sendBuf[offset + j] << endl;
+					}
+#endif
+					MPI_Recv((char *)(recvBuf + offset * sizeof(int64)), commSize * sizeof(int64), MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD, &status);
+					readCur[i] = i * commSize;
+					sendCur[i] = i * commSize;
+
+					curBuf = (int64 *)(recvBuf + offset * sizeof(int64));
+					for (j = 0; j < commSize; j++) {
+						rnData[offset + j].setMember(curBuf[j], i);
+						if (curBuf[j] == EMPTY) break;
+					}
+#ifdef RENAMEDEBUG
+					std::cout << "重命名：从 " << i << "接收到的数据：" << endl;
+					for (j = 0; j < commSize; j++) {
+						rnData[offset + j].printA();
+					}
+#endif
+				}
+				rnPQ.push(rnData[readCur[i]++]);
+
+			}
+		}
+	}
+
 	void computeGSA(int32 level) {
 
 		//cout << "....mainNode..." << endl;
 		while (!rnPQ.empty())rnPQ.pop();
-
+		int64 n = 0;
 		//接受每个子节点的大小
 		int32 i, j = 0;
 		//int64 sumSize = 0;
@@ -80,9 +183,10 @@ public:
 #ifdef	SADEBUG
 		for (i = 0; i < numOfChild; i++) {
 			//MPI_Recv(&(sizeOfChild[i]), 1, MPI_LONG, i + 1, i + 1, MPI_COMM_WORLD, &status);
-			cout << "the size of " << i << "is " << sizeOfChild[i] << endl;
-			n += sizeOfChild[i];
+			std::cout << "the size of " << i << "is " << sizeOfChild[i] << endl;
 		}
+
+		std::cout << "n is " << n << endl;
 #endif
 
 		//开始计算SA
@@ -90,65 +194,14 @@ public:
 
 		computeGSAl(level, gPos);
 
-		gPos = n;
+		gPos = n + 1;
 
 		computeGSAs(level, gPos);
 
 		//rename
-		int64 rank = 0, offset = 0;
-		for (i = 0; i < numOfChild; i++) {
-			//	sumChildSize[i] = sumSize;
-			//	sumSize += sizeOfChild[i];
-			offset = i * commSize;
-			readCur[i] = offset;
-			sendCur[i] = offset;
-			MPI_Recv((int64 *)recvBuf + offset, commSize, MPI_LONG, i + 1, i + 1, MPI_COMM_WORLD, &status);
-			int64 *curBuf = (int64 *)recvBuf + offset;
-			for (j = 0; j < commSize; j++) {
-				ReNameData temp1(curBuf[j], i);
-				rnData[offset + j] = temp1;
-				if (curBuf[j] == EMPTY) break;
-			}
-		}
-
-		for (i = 0; i < numOfChild; i++) {
-			rnPQ.push(rnData[readCur[i]++]);
-			markFinish[i] = 0;
-		}
-		ReNameData temp, minVal;
-		while (!rnPQ.empty()) {
-			temp = rnPQ.top();
-			i = temp.nodeId;
-			if (temp.index == EMPTY) {
-				markFinish[i] = 1;
-				//发送数据
-				MPI_Send(sendBuf + i * commSize, commSize, MPI_LONG, i + 1, i + 1, MPI_COMM_WORLD);
-				rnPQ.pop();
-			}
-			else {
-				sendBuf[i * commSize + sendCur[i]] = rank++;
-				sendCur[i]++;
-				rnPQ.pop();
-				rnPQ.push(rnData[i * commSize + readCur[i]]);
-				readCur[i]++;
-
-				if (readCur[i] == commSize) {
-					//发送数据
-					offset = i * commSize;
-					MPI_Send(sendBuf + offset, commSize, MPI_LONG, i + 1, i + 1, MPI_COMM_WORLD);
-					MPI_Recv((int64 *)recvBuf + offset, commSize, MPI_LONG, i + 1, i + 1, MPI_COMM_WORLD, &status);
-					readCur[i] = 0;
-					sendCur[i] = 0;
-
-					int64 *curBuf = (int64 *)recvBuf + offset;
-					for (j = 0; j < commSize; j++) {
-						ReNameData temp1(curBuf[j], i);
-						rnData[offset + j] = temp1;
-						if (curBuf[j] == EMPTY) break;
-					}
-				}
-			}
-		}
+		reName(level);
+		//MPI_Recv((char *)recvBuf, commSize * sizeof(int64), MPI_CHAR, 1, 1, MPI_COMM_WORLD, &status);
+		//cout << "hhhhhhgggg" << endl;
 		//判断是否递归
 		bool isCycle = 0;
 		if (gPos != numOfChild + 1) {
@@ -162,7 +215,7 @@ public:
 		}
 	}
 
-	void computeGSAl(int32 level, int64 &gPos) {
+	void computeGSAl(int32 level, int64 gPos) {
 		int64 recvLen= 2 * commSize * sizeof(int64) + commSize / 8 + ((level == 0) ? commSize : (commSize * sizeof(int64)));
 		int64 i, j, numFinised = 0;
 		int32 chrOffset = 2 * commSize * sizeof(int64) + commSize / 8 + commSize / 8;
@@ -178,7 +231,7 @@ public:
 			sendCur[i] = i * commSize;
 			MPI_Recv((char*)recvBuf + i * recvLen, recvLen, MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD, &status);
 		}
-		cout << "接收到初始化数据长度:"<< recvLen<<endl;
+		//cout << "接收到初始化数据长度:"<< recvLen<<endl;
 		for (i = 0; i < numOfChild; i++) {
 			for (j = 0; j < commSize; j++) {
 				
@@ -202,10 +255,10 @@ public:
 			}
 
 #ifdef SALDEBUG
-			cout <<"从 "<<i<< "接收到的数据：" << endl;
+			if (level > 0)cout <<"从 "<<i<< "接收到的数据：" << endl;
 			for (i = 0; i < numOfChild; i++) {
 				for (j = 0; j < commSize; j++) {
-					recvData[i * commSize + j].printA();
+					if(level > 0)recvData[i * commSize + j].printA();
 				}
 			}
 #endif
@@ -233,9 +286,9 @@ public:
 				map[i].clear();
 
 #ifdef SALDEBUG
-				cout << "向 " << i << " 发送的数据：" << endl;
+				if (level > 0)cout << "最后向 " << i << " 发送的数据：" << endl;
 				for (j = 0; j < commSize; j++) {
-					cout<<sendBuf[i * commSize + j]<<",";
+					if (level > 0)cout<<sendBuf[i * commSize + j]<<",";
 				}
 				cout << endl;
 #endif
@@ -258,8 +311,8 @@ public:
 					
 				}
 				
-				cout <<"gPos is" << gPos<< " minVal is:" << endl;
-				minVal.printA();
+				//cout <<"gPos is" << gPos<< " minVal is:" << endl;
+				//minVal.printA();
 				//cout << "gPos is" << gPos << endl;
 				PQ.pop();
 				
@@ -271,9 +324,9 @@ public:
 					map[i].clear();
 					time = 0;
 #ifdef SALDEBUG
-					cout << "向 "<<i << " 发送的数据：" << endl;
+					if (level > 0)cout << "向 "<<i << " 发送的数据：" << endl;
 					for (j = 0; j < commSize; j++) {
-						cout << sendBuf[i * commSize + j] << ",";
+						if (level > 0)cout << sendBuf[i * commSize + j] << ",";
 					}
 					cout << endl;
 #endif
@@ -304,10 +357,10 @@ public:
 						
 						PQ.push(recvData[readCur[i]++]);
 #ifdef SALDEBUG
-						cout << "从 " << i << "接收到的数据：" << endl;
+						if (level > 0)cout << "从 " << i << "接收到的数据：" << endl;
 						for (i = 0; i < numOfChild; i++) {
 							for (j = 0; j < commSize; j++) {
-								recvData[i * commSize + j].printA();
+								if (level > 0)recvData[i * commSize + j].printA();
 							}
 						}
 #endif
@@ -323,13 +376,16 @@ public:
 		
 	}
 	
-	void computeGSAs(int32 level, int64 &gPos) {
+	void computeGSAs(int32 level, int64 gPos) {
 		int64 recvLen = 2 * commSize * sizeof(int64) + commSize / 8 + ((level == 0) ? commSize : (commSize * sizeof(int64)));
 		int64 i, j, sumSize = 0;
 		int32 chrOffset = 2 * commSize * sizeof(int64) + commSize / 8 + commSize / 8;
 		//int64 gPos = numOfChild + 1;
 		//int32 sumSize = 0;
 		//int64 *sumChildSize = new int64[numOfChild];
+#ifdef SASDEBUG
+		cout << "gPos is " << gPos << endl;
+#endif
 		while (!PQ.empty())PQ.pop();
 		for (i = 0; i < numOfChild; i++) {
 			//	sumChildSize[i] = sumSize;
@@ -347,26 +403,33 @@ public:
 							((int64 *)(recvBuf + i * recvLen))[commSize + j],
 							tget(i * recvLen + 2 * commSize * sizeof(int64), j),
 							//isGget(i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8 + j),
-							(recvBuf + i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8 + commSize / 8)[j],
+							(recvBuf + i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8)[j],
 							i);
 					else {
 						recvData[i * commSize + j].setMember(((int64 *)(recvBuf + i * recvLen))[j],
 							((int64 *)(recvBuf + i * recvLen))[commSize + j],
 							tget(i * recvLen + 2 * commSize * sizeof(int64), j),
 							//isGget(i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8 + j),
-							((int64 *)(recvBuf + i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8 + commSize / 8))[j],
+							((int64 *)(recvBuf + i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8))[j],
 							i);
 					}
 					map[i][recvData[j].SA] = i * commSize + j;
 				}
 			}
 		}
-
+#ifdef SASDEBUG
+		if (level > 0)cout << "从 " << i << "接收到的数据：" << endl;
+		for (i = 0; i < numOfChild; i++) {
+			for (j = 0; j < commSize; j++) {
+				if (level > 0)recvData[i * commSize + j].printA();
+			}
+		}
+#endif
 		for (i = 0; i < numOfChild; i++) {
 			PQ.push(recvData[readCur[i]++]);
 		}
 
-		int32 minNodeId = 0;
+		int32 time = 0, minNodeId = 0;
 		RecvData temp, minVal;
 
 		while (!PQ.empty()) {
@@ -380,26 +443,45 @@ public:
 
 				//清除对应map中的数据
 				map[i].clear();
+#ifdef SASDEBUG
+				if (level > 0)cout << "最后向 " << i << " 发送的数据：" << endl;
+				for (j = 0; j < commSize; j++) {
+					if (level > 0)cout << sendBuf[i * commSize + j] << ",";
+				}
+				cout << endl;
+#endif
+
 			}
 			else {
 
+				if (minVal != temp) {
+					gPos--;
+					minVal.setMember(temp);
+				}
 				j = temp.SA - 1;
-				sendBuf[i * commSize + sendCur[i]] = gPos;
-				sendCur[i]++;
-				if (minVal != temp)gPos--;
-				minVal = temp;
+
+				sendBuf[sendCur[i]++] = gPos;
+				//sendCur[i]++;
+				time++;
 				if (temp.SA > 0 && map[i].find(j) != map[i].end()) {
 					recvData[map[i][j]].suffixGIndex = gPos;
-					//map[i][j].isGlobal = 1;
 				}
 				PQ.pop();
-				PQ.push(recvData[readCur[i]]);
-				readCur[i]++;
-				if (readCur[i] == commSize) {
+				
+			//	readCur[i]++;
+				if (time == commSize) {
 					//发送数据
 					MPI_Send((char*)(sendBuf + i * commSize), commSize * sizeof(int64), MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD);
 					//清除对应map中的数据
 					map[i].clear();
+
+#ifdef SASDEBUG
+					if (level > 0)cout << "向 " << i << " 发送的数据：" << endl;
+					for (j = 0; j < commSize; j++) {
+						if (level > 0)cout << sendBuf[i * commSize + j] << ",";
+					}
+					cout << endl;
+#endif
 					//接收数据
 					if (!markFinish[i]) {
 						MPI_Recv((char*)recvBuf + i * recvLen, recvLen, MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD, &status);
@@ -422,10 +504,23 @@ public:
 							}
 							map[i][recvData[j].SA] = i * commSize + j;
 						}
-						readCur[i] = 0;
-						sendCur[i] = 0;
+						readCur[i] = i * commSize;
+						sendCur[i] = i * commSize;
+						time = 0;
+						PQ.push(recvData[readCur[i]++]);
+#ifdef SASDEBUG
+						if (level > 0)cout << "从 " << i << "接收到的数据：" << endl;
+						for (i = 0; i < numOfChild; i++) {
+							for (j = 0; j < commSize; j++) {
+								if (level > 0)recvData[i * commSize + j].printA();
+							}
+						}
+#endif
 					}
 
+				}
+				else {
+					PQ.push(recvData[readCur[i]++]);
 				}
 			}
 
