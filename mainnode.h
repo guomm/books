@@ -8,10 +8,10 @@
 #define tget(j,i) ( (recvBuf[j+i/8]&mask[(i)%8]) ? 1 : 0 )
 //#define isGget(i) ( (recvBuf[(i)/8]&mask[(i)%8]) ? 1 : 0 )
 
-//#define SADEBUG
-//#define SALDEBUG
-//#define SASDEBUG
-//#define RENAMEDEBUG
+#define SADEBUG
+#define SALDEBUG
+#define SASDEBUG
+#define RENAMEDEBUG
 
 using namespace std;
 
@@ -66,7 +66,7 @@ public:
 		computeGSA(0);
 	}
 
-	void reName(int32 level) {
+	void reName(int32 level, bool isCycle) {
 #ifdef RENAMEDEBUG
 		cout << "主节点开始重命名: numOfChild is " << numOfChild << endl;
 #endif
@@ -125,8 +125,11 @@ public:
 					rank++;
 					minVal.setMember(temp);
 				}
+				else {
+					isCycle = 1;
+				}
 
-				sendBuf[i * commSize + sendCur[i]] = rank;
+				sendBuf[sendCur[i]] = rank;
 				sendCur[i]++;
 				time++;
 				rnPQ.pop();
@@ -147,7 +150,7 @@ public:
 					MPI_Recv((char *)(recvBuf + offset * sizeof(int64)), commSize * sizeof(int64), MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD, &status);
 					readCur[i] = i * commSize;
 					sendCur[i] = i * commSize;
-
+					time = 0;
 					curBuf = (int64 *)(recvBuf + offset * sizeof(int64));
 					for (j = 0; j < commSize; j++) {
 						rnData[offset + j].setMember(curBuf[j], i);
@@ -197,15 +200,16 @@ public:
 
 		computeGSAs(level, gPos);
 
+		bool isCycle = 0;
 		//rename
-		reName(level);
+		reName(level, isCycle);
 		//MPI_Recv((char *)recvBuf, commSize * sizeof(int64), MPI_CHAR, 1, 1, MPI_COMM_WORLD, &status);
 		//cout << "hhhhhhgggg" << endl;
 		//判断是否递归
-		bool isCycle = 0;
-		if (gPos != numOfChild + 1) {
+		
+		if (isCycle) {
 			//需要递归,接收每个节点传送过来的lms字符的全局排名
-			isCycle = 1;
+			//isCycle = 1;
 			for (i = 0; i < numOfChild;i++)MPI_Send(&isCycle, 1, MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD);
 			computeGSA(level + 1);
 		}
