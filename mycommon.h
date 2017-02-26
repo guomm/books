@@ -358,7 +358,7 @@ struct RecvData {
 	}
 
 	void printA() {
-		std::cout << "<" << (char)data << "," << nodeId << "," << type << "," << SA << "," << suffixGIndex << ">" << std::endl;
+		std::cout << "<" << data << "," << nodeId << "," << type << "," << SA << "," << suffixGIndex << ">" << std::endl;
 	}
 }
 //#if _MSC_VER

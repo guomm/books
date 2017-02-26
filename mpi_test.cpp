@@ -27,11 +27,13 @@ int main(int argc, char* argv[])
 		MainNode mainNode(numproces - 1);
 	//	cout << "....MainNode..." << endl;
 		mainNode.compute();
+		cout << "主节点结束" << endl;
 	}
 	else {
 		ChildNode childNode(myid);
 		//cout << "....childNode..." << endl;
 		childNode.compute(path);
+		cout << "子节点结束" << endl;
 	}
 	MPI_Finalize();
 	//system("pause");  

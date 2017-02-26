@@ -8,7 +8,7 @@
 #define tget(j,i) ( (recvBuf[j+i/8]&mask[(i)%8]) ? 1 : 0 )
 //#define isGget(i) ( (recvBuf[(i)/8]&mask[(i)%8]) ? 1 : 0 )
 
-#define SADEBUG
+//#define SADEBUG
 //#define SALDEBUG
 //#define SASDEBUG
 //#define RENAMEDEBUG
@@ -71,8 +71,7 @@ public:
 		cout << "主节点开始重命名: numOfChild is " << numOfChild << endl;
 #endif
 		int64 rank = 0, offset = 0;
-		if (level == 0)rank = 0;
-		else rank = -1;
+		rank = 0;
 
 		int64 *curBuf;
 		int64 i, j = 0;
@@ -213,12 +212,20 @@ public:
 		else {
 			for (i = 0; i < numOfChild; i++)MPI_Send(&isCycle, 1, MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD);
 		}
+
+		gPos = numOfChild;
+
+		computeGSAl(level, gPos);
+
+		gPos = n + 1;
+
+		computeGSAs(level, gPos);
 	}
 
 	void computeGSAl(int32 level, int64 gPos) {
 		int64 recvLen= 2 * commSize * sizeof(int64) + commSize / 8 + ((level == 0) ? commSize : (commSize * sizeof(int64)));
 		int64 i, j, numFinised = 0;
-		int32 chrOffset = 2 * commSize * sizeof(int64) + commSize / 8 + commSize / 8;
+		//int32 chrOffset = 2 * commSize * sizeof(int64) + commSize / 8 + commSize / 8;
 		//int64 gPos = numOfChild + 1;
 		int64 sumSize = 0;
 		//int64 *sumChildSize = new int64[numOfChild];
@@ -247,7 +254,7 @@ public:
 							((int64 *)(recvBuf + i * recvLen))[commSize + j],
 							tget(i * recvLen + 2 * commSize * sizeof(int64), j),
 						//	isGget(i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8 + j),
-							((int64 *)(recvBuf + i * recvLen + 2 * commSize + commSize / 8 ))[j],
+							((int64 *)(recvBuf + i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8 ))[j],
 							i);
 					}
 					map[i][recvData[j].SA] = i * commSize + j;
@@ -255,7 +262,7 @@ public:
 			}
 
 #ifdef SALDEBUG
-			if (level > 0)cout <<"从 "<<i<< "接收到的数据：" << endl;
+			if (level > 0)cout <<"level is "<<level<<" computeSAL 从 "<<i<< "接收到的数据：" << endl;
 			for (i = 0; i < numOfChild; i++) {
 				for (j = 0; j < commSize; j++) {
 					if(level > 0)recvData[i * commSize + j].printA();
@@ -286,7 +293,7 @@ public:
 				map[i].clear();
 
 #ifdef SALDEBUG
-				if (level > 0)cout << "最后向 " << i << " 发送的数据：" << endl;
+				if (level > 0)cout << "level is " << level << " computeSAL 最后向 " << i << " 发送的数据：" << endl;
 				for (j = 0; j < commSize; j++) {
 					if (level > 0)cout<<sendBuf[i * commSize + j]<<",";
 				}
@@ -324,7 +331,7 @@ public:
 					map[i].clear();
 					time = 0;
 #ifdef SALDEBUG
-					if (level > 0)cout << "向 "<<i << " 发送的数据：" << endl;
+					if (level > 0)cout << "level is " << level << " computeSAL 向 "<<i << " 发送的数据：" << endl;
 					for (j = 0; j < commSize; j++) {
 						if (level > 0)cout << sendBuf[i * commSize + j] << ",";
 					}
@@ -357,7 +364,7 @@ public:
 						
 						PQ.push(recvData[readCur[i]++]);
 #ifdef SALDEBUG
-						if (level > 0)cout << "从 " << i << "接收到的数据：" << endl;
+						if (level > 0)cout << "level is " << level << " computeSAL 从 " << i << "接收到的数据：" << endl;
 						for (i = 0; i < numOfChild; i++) {
 							for (j = 0; j < commSize; j++) {
 								if (level > 0)recvData[i * commSize + j].printA();
@@ -376,7 +383,7 @@ public:
 		
 	}
 	
-	void computeGSAs(int32 level, int64 gPos) {
+	void computeGSAs(int32 level, int64 &gPos) {
 		int64 recvLen = 2 * commSize * sizeof(int64) + commSize / 8 + ((level == 0) ? commSize : (commSize * sizeof(int64)));
 		int64 i, j, sumSize = 0;
 		int32 chrOffset = 2 * commSize * sizeof(int64) + commSize / 8 + commSize / 8;
@@ -418,7 +425,7 @@ public:
 			}
 		}
 #ifdef SASDEBUG
-		if (level > 0)cout << "从 " << i << "接收到的数据：" << endl;
+		if (level > 0)cout << "level is " << level << " computeSAS 从 " << i << "接收到的数据：" << endl;
 		for (i = 0; i < numOfChild; i++) {
 			for (j = 0; j < commSize; j++) {
 				if (level > 0)recvData[i * commSize + j].printA();
@@ -444,7 +451,7 @@ public:
 				//清除对应map中的数据
 				map[i].clear();
 #ifdef SASDEBUG
-				if (level > 0)cout << "最后向 " << i << " 发送的数据：" << endl;
+				if (level > 0)cout << "level is " << level << " computeSAS 最后向 " << i << " 发送的数据：" << endl;
 				for (j = 0; j < commSize; j++) {
 					if (level > 0)cout << sendBuf[i * commSize + j] << ",";
 				}
@@ -476,7 +483,7 @@ public:
 					map[i].clear();
 
 #ifdef SASDEBUG
-					if (level > 0)cout << "向 " << i << " 发送的数据：" << endl;
+					if (level > 0)cout << "level is " << level << " computeSAS 向 " << i << " 发送的数据：" << endl;
 					for (j = 0; j < commSize; j++) {
 						if (level > 0)cout << sendBuf[i * commSize + j] << ",";
 					}
@@ -492,14 +499,14 @@ public:
 									((int64 *)(recvBuf + i * recvLen))[commSize + j],
 									tget(i * recvLen + 2 * commSize * sizeof(int64), j),
 									//isGget(i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8 + j),
-									(recvBuf + i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8 + commSize / 8)[j],
+									(recvBuf + i * recvLen + 2 * commSize * sizeof(int64)  + commSize / 8)[j],
 									i);
 							else {
 								recvData[i * commSize + j].setMember(((int64 *)(recvBuf + i * recvLen))[j],
 									((int64 *)(recvBuf + i * recvLen))[commSize + j],
 									tget(i * recvLen + 2 * commSize * sizeof(int64), j),
 									//isGget(i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8 + j),
-									((int64 *)(recvBuf + i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8 + commSize / 8))[j],
+									((int64 *)(recvBuf + i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8))[j],
 									i);
 							}
 							map[i][recvData[j].SA] = i * commSize + j;
@@ -509,7 +516,7 @@ public:
 						time = 0;
 						PQ.push(recvData[readCur[i]++]);
 #ifdef SASDEBUG
-						if (level > 0)cout << "从 " << i << "接收到的数据：" << endl;
+						if (level > 0)cout << "level is " << level << " computeSAS 从 " << i << "接收到的数据：" << endl;
 						for (i = 0; i < numOfChild; i++) {
 							for (j = 0; j < commSize; j++) {
 								if (level > 0)recvData[i * commSize + j].printA();

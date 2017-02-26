@@ -32,7 +32,7 @@ using namespace std;
 //#define SADEBUG
 //#define SALDEBUG
 //#define SASDEBUG
-#define RENAMEDEBUG
+//#define RENAMEDEBUG
 
 
 class ChildNode {
@@ -88,7 +88,7 @@ public:
 		GRank[0] = nodeId;
 		suffixGIndex[SA[0] - 1] = nodeId;
 		//isGset(SA[0] - 1, 1);
-		/*for (i = 0; i < n; i++) {
+		/*if(level > 0)for (i = 0; i < n; i++) {
 			cout << SA[i] <<"," << suffixGIndex[SA[i]]<< endl;
 		}*/
 		induceSAl(t,SA,s,bkt,n,K,cs,level, isG, GRank, suffixGIndex, nodeId, status);
@@ -97,7 +97,7 @@ public:
 
 		free(bkt);
 #ifdef RENAMEDEBUG
-		cout << "子节点 "<<nodeId<<" 开始重命名:" << std::endl;
+		cout << "level is " << level << " 子节点 "<<nodeId<<" 开始重命名:" << std::endl;
 #endif
 		//因为每次迭代最少减少一半，所以用SA前半部分存储本地SA，后半部分存储全局排名
 		int64 n1 = 0, sendPos = 0, offset = n / 2, desOffset = 0;
@@ -179,11 +179,15 @@ public:
 		bool isLoop = 0;
 		MPI_Recv(&(isLoop), 1, MPI_CHAR, MAINNODEID, nodeId, MPI_COMM_WORLD, &status);
 		if (isLoop) {
-			cout << "开始递归" << endl;
+			cout << "level is " << level << " 开始递归 s1是：" << endl;
+			for (i =0; i < n1; i++) {
+				cout << s1[i] << endl;
+			}
+
 			computeSA((unsigned char *)s1,SA1, GRank, suffixGIndex,n1,sizeof(int64), n1,level+1);
 		}
 		else {
-			cout << "不需要递归" << endl;
+			cout << "level is " << level << " 不需要递归" << endl;
 
 			//不需要递归时才求本地排名
 			//int64 *SATemp = new int64[n1];
@@ -205,7 +209,7 @@ public:
 				if (SA[i] != EMPTY) SA[j++] = SA[i];//此时SA前n1个字符就是本地排名的顺序
 
 			//调整全局排名的位置到SA的最后端
-			for (i = n - n1, j = 0; i < n; i++)SA[i] = suffixGIndex[j++];
+		//	for (i = n - n1, j = 0; i < n; i++)SA[i] = suffixGIndex[j++];
 
 			//将suffixGIndex末尾保存的lms字符的SA赋给SA数组
 			//j = 0;
@@ -257,11 +261,14 @@ public:
 			//s1 = SA + n - n1;
 		}
 
-		//s1是全局排名 SA1是本地排名
+		//suffixGIndex是全局排名 SA1是本地排名 s1是全局重命名后的字符串
 		
-		cout << " lms 字符的全局排名和本地排名是:" << endl;
+		//调整全局排名的位置到SA的最后端
+		for (i = n - n1, j = 0; i < n; i++)SA[i] = suffixGIndex[j++];
+
+		cout << "level is " << level << " 全局重命名后lms 字符的全局排名和本地排名是:" << endl;
 		for (i = 0; i < n1; i++) {
-			cout << s1[i] << "," << SA1[i] << endl;
+			cout <<suffixGIndex[i] << "," << SA1[i] << endl;
 		}
 
 		bkt = (int64 *)malloc(sizeof(int64)*(K + 1)); // bucket counters
@@ -295,21 +302,34 @@ public:
 				SA[bkt[chr(j)]--] = j;
 			}
 		}
+
+		suffixGIndex[n - 2] = nodeId;
+
 		induceSAl(t, SA, s, bkt, n, K, cs, level, isG, GRank, suffixGIndex, nodeId, status);
 
 		induceSAs(t, SA, s, bkt, n, K, cs, isG, GRank, suffixGIndex, nodeId, status);
 
+		j = suffixGIndex[n - 1];
+		for (i = n-2; i >=0; i--) {
+			suffixGIndex[i+1] = suffixGIndex[i];
+		}
+		suffixGIndex[0] = j;
+
+		cout <<"level "<<level << " 排完序的s，SA，GRank是：" << endl;
+		for (i = 0; i < n; i++)
+			cout << chr(i) << ",," << SA[i] <<",,"<< suffixGIndex[i]<< endl;
+
 		free(bkt);
 		free(t);
 		free(isG);
-		free(bufSend);
+		//free(bufSend);
 	}
 
 	// compute SAl
 	void induceSAl(unsigned char *t, int64 *SA, unsigned char *s, int64 *bkt,
 		int64 n, int64 K, int64 cs, int64 level, unsigned char *isG, int64 *GRank , int64 *suffixGIndex,int32 nodeId, MPI_Status &status) {
 		int64 i, j, sendPos = 0;
-		int64 sendLength = 2 * commSize * sizeof(int64) + commSize / 8  + ((cs == sizeof(int64)) ? (commSize * sizeof(int64)) : commSize);
+		int64 sendLength = 2 * commSize * sizeof(int64) + commSize / 8  + ((level != 0) ? (commSize * sizeof(int64)) : commSize);
 		getBuckets(s, bkt, n, K, cs, false); // find heads of buckets
 		if (level == 0) bkt[0]++;
 
@@ -332,7 +352,7 @@ public:
 				//cout << SA[i] << "," << ((int64 *)bufSend)[sendPos] << endl;
 				//bufset(commSize * sizeof(int64) * 2 + commSize / 8 + sendPos, isGget(i));//type
 				if (cs == sizeof(int64)) {
-					((int64 *)bufSend)[commSize * 2 + commSize / 8  / 8 + sendPos] = ((int64 *)s)[SA[i]];
+					((int64 *)(bufSend + commSize * sizeof(int64) * 2 + commSize / 8 ))[sendPos] = ((int64 *)s)[SA[i]];
 				}
 				else {
 					bufSend[commSize * sizeof(int64) * 2 + commSize / 8  + sendPos] = s[SA[i]];
@@ -362,11 +382,16 @@ public:
 		//向服务器发送剩余的数据(加一个结束位)
 		((int64 *)bufSend)[sendPos] = EMPTY;
 		sendPos++;
+		if (level > 0)cout << "发送了 " << sendPos << " 个数据" << endl;
 		MPI_Send((char*)bufSend, sendLength, MPI_CHAR, MAINNODEID, nodeId, MPI_COMM_WORLD);
 		MPI_Recv((char*)GRank, commSize * sizeof(int64), MPI_CHAR, MAINNODEID, nodeId, MPI_COMM_WORLD, &status);
 		sendPos--;
 		for (j = 0; j < sendPos; j++) {
-			suffixGIndex[((int64 *)bufSend)[j] - 1] = GRank[j];
+			if (((int64 *)bufSend)[j] == 0)suffixGIndex[n - 1] = GRank[j];
+			else {
+				suffixGIndex[((int64 *)bufSend)[j] - 1] = GRank[j];
+			}
+			//suffixGIndex[((int64 *)bufSend)[j] - 1] = GRank[j];
 		}
 		
 	}
@@ -387,7 +412,7 @@ public:
 				bufset(commSize * sizeof(int64) * 2, sendPos, tget(SA[i]));//type
 				//bufset(commSize * sizeof(int64) * 2 + commSize / 8 + sendPos, isGget(i));//type
 				if (cs == sizeof(int64)) {
-					((int64 *)bufSend)[commSize * 2 + commSize / 8  / 8 + sendPos] = ((int64 *)s)[SA[i]];
+					((int64 *)(bufSend + commSize * sizeof(int64) * 2 + commSize / 8))[sendPos] = ((int64 *)s)[SA[i]];
 				}
 				else {
 					bufSend[commSize * sizeof(int64) * 2 + commSize / 8 + sendPos] = s[SA[i]];
@@ -400,8 +425,13 @@ public:
 					//recvPos += commSize;
 					//更新suffixGIndex
 					for (j = 0; j < commSize; j++) {
-						suffixGIndex[((int64 *)bufSend)[j] - 1] = GRank[j];
+						//suffixGIndex[((int64 *)bufSend)[j] - 1] = GRank[j];
 						//isGset(((int64 *)bufSend)[j] - 1, 1);
+
+						if (((int64 *)bufSend)[j] == 0)suffixGIndex[n - 1] = GRank[j];
+						else {
+							suffixGIndex[((int64 *)bufSend)[j] - 1] = GRank[j];
+						}
 					}
 					sendPos = 0;
 				}
@@ -415,7 +445,11 @@ public:
 		MPI_Recv((char *)GRank, commSize * sizeof(int64), MPI_CHAR, MAINNODEID, nodeId, MPI_COMM_WORLD, &status);
 		sendPos--;
 		for (j = 0; j < sendPos; j++) {
-			suffixGIndex[((int64 *)bufSend)[j] - 1] = GRank[j];
+			//suffixGIndex[((int64 *)bufSend)[j] - 1] = GRank[j];
+			if (((int64 *)bufSend)[j] == 0)suffixGIndex[n - 1] = GRank[j];
+			else {
+				suffixGIndex[((int64 *)bufSend)[j] - 1] = GRank[j];
+			}
 		}
 		
 	}
@@ -439,11 +473,10 @@ public:
 		//printf("%s", data);
 
 		computeSA(data,SA, GRank, suffixGIndex,n,sizeof(unsigned char),256,0);
-
 		delete[] SA;
 		delete[] GRank;
-		delete[] suffixGIndex;
-		//computeSA<unsigned char>(data,n,128,0);
+		delete[] suffixGIndex;	
+		delete[] data;
 	}
 
 
