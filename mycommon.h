@@ -109,24 +109,13 @@ int64 MyIO<T>::getFileLenCh(std::string _fn) {
 //}
 //
 
-
-constexpr uint64 TBUFSIZE = 1 * 1024 * 1024 * 1024; //total buffer size in bytes
-constexpr uint64 SBUFSIZE = 1 * 1024 * 1024;  //small buffer size
-constexpr uint64 MBUFSIZE = 64 * 1024 * 1024;  //middle buffer size
-constexpr uint64 LBUFSIZE = 512 * 1024 * 1024;  //large buffer size
-
-constexpr int32 K1 = 1024; //main node buffer size
-constexpr int32 K2 = 1024; //child node buffer size
-//constexpr int64 EMPTY = 0xffffffffffffffff;
-constexpr int64 CHILDCAPACITY = 1024  * 20;//200M
-
-constexpr int32 commSize=8;
+constexpr int32 commSize=1024;
 constexpr bool L_TYPE = 0;
 constexpr bool S_TYPE = 1;
 constexpr int32 MAINNODEID = 0;
 unsigned char mask[] = { 0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01 };
 const int64 EMPTY = 0xffffffffffffffff;
-
+const int64 MAX = (std::numeric_limits<int64>::max)();
 
 
 
@@ -324,6 +313,7 @@ struct RecvData {
 	bool operator<(const RecvData &other) const
 	{
 		//if(!isGlobal || !other.isGlobal)std::cout << "不是全局变量不能比较<" << std::endl;
+		if (this == nullptr) return true;
 		if (data < other.data)return true;
 		if (data > other.data)return false;
 		if (type < other.type)return true;
@@ -334,6 +324,7 @@ struct RecvData {
 
 	bool operator>(const RecvData &other) const
 	{
+		if (this == nullptr) return true;
 		//if (!isGlobal || !other.isGlobal)std::cout << "不是全局变量不能比较>" << std::endl;
 		if (data > other.data)return true;
 		if (data < other.data)return false;
@@ -345,15 +336,17 @@ struct RecvData {
 
 	bool operator==(const RecvData &other) const
 	{
+		if (this == nullptr) return true;
 		//if (!isGlobal || !other.isGlobal)std::cout << "不是全局变量不能比较==" << std::endl;
-		if (data == other.data && type == other.type && suffixGIndex == other.suffixGIndex)return true;
+		if ((data == other.data) && (type == other.type) && (suffixGIndex == other.suffixGIndex))return true;
 		return false;
 	}
 
 	bool operator!=(const RecvData &other) const
 	{
+		if (this == nullptr) return true;
 		//if (!isGlobal || !other.isGlobal)std::cout << "不是全局变量不能比较==" << std::endl;
-		if (data != other.data || type != other.type || suffixGIndex != other.suffixGIndex)return true;
+		if ((data != other.data) || (type != other.type) || (suffixGIndex != other.suffixGIndex))return true;
 		return false;
 	}
 

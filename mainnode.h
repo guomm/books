@@ -9,10 +9,12 @@
 //#define isGget(i) ( (recvBuf[(i)/8]&mask[(i)%8]) ? 1 : 0 )
 
 #define SADEBUG
-#define SALDEBUG
-#define SASDEBUG
-#define RENAMEDEBUG
+//#define SALDEBUG
+//#define SASDEBUG
+//#define RENAMEDEBUG
 
+#define LEVELL 7
+//#define PQQ
 using namespace std;
 
 class MainNode {
@@ -21,16 +23,15 @@ private:
 	MPI_Status status;
 	int64 *sizeOfChild;
 	
-	bool *markFinish;
 	unsigned char *recvBuf;
 	int64 *sendBuf;
 	unordered_map<int64, int64> *map;
 	RecvData *recvData;
-	priority_queue<RecvData> PQ;
-	priority_queue<ReNameData> rnPQ;
+	priority_queue<RecvData, vector<RecvData>, greater<RecvData>>PQL;
+	priority_queue<RecvData> PQS;
+	priority_queue<ReNameData, vector<ReNameData>, greater<ReNameData>>rnPQ;
 	ReNameData *rnData;
 	int32 *readCur;
-	int32 *sendCur;
 public:
 	MainNode(int32 num_child_node){
 		numOfChild = num_child_node;
@@ -42,17 +43,13 @@ public:
 		recvData = new RecvData[sumLen];
 		rnData = new ReNameData[sumLen];
 		readCur = new int32[sumLen];
-		sendCur = new int32[sumLen];
-		markFinish = new bool[numOfChild];
 		sizeOfChild = new int64[numOfChild];
 		for (int32 i = 0; i < numOfChild; i++) {
-			markFinish[i] = false;
 			sizeOfChild[i] = 0;
 			unordered_map<int64, int64> mapTemp;
 			map[i] = mapTemp;
 		}
 		for (int32 i = 0; i < sumLen; i++) {
-			sendCur[i] = 0;
 			readCur[i] = 0;
 			sendBuf[i] = 0;
 			RecvData temp;
@@ -66,12 +63,14 @@ public:
 		computeGSA(0);
 	}
 
-	void reName(int32 level, bool isCycle) {
+	void reName(int32 level, int64 &rank, bool &isCycle) {
 #ifdef RENAMEDEBUG
 		cout << "主节点开始重命名: numOfChild is " << numOfChild << endl;
 #endif
-		int64 rank = 0, offset = 0;
-		rank = 0;
+		int64  offset = 0;
+		//rank = 0;
+
+		while (!rnPQ.empty())rnPQ.pop();
 
 		int64 *curBuf;
 		int64 i, j = 0;
@@ -82,9 +81,9 @@ public:
 			
 			offset = i * commSize;
 			readCur[i] = offset;
-			sendCur[i] = offset;
-			MPI_Recv((char *)recvBuf + offset * sizeof(int64), commSize * sizeof(int64), MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD, &status);
-			curBuf = (int64 *)(recvBuf + offset);
+			//sendCur[i] = offset;
+			MPI_Recv((char *)(recvBuf + offset * sizeof(int64)), commSize * sizeof(int64), MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD, &status);
+			curBuf = (int64 *)(recvBuf + offset * sizeof(int64));
 			for (j = 0; j < commSize; j++) {
 				rnData[offset + j].setMember(curBuf[j], i);
 				if (curBuf[j] == EMPTY) break;
@@ -99,24 +98,24 @@ public:
 		}
 
 		for (i = 0; i < numOfChild; i++) {
-			rnPQ.push(rnData[readCur[i]++]);
-			markFinish[i] = 0;
+			rnPQ.push(rnData[readCur[i]]);
 		}
 		ReNameData temp, minVal;
-		int32 time = 0;
 		while (!rnPQ.empty()) {
 			temp = rnPQ.top();
 			i = temp.nodeId;
+			offset = i * commSize;
 			if (temp.index == EMPTY) {
-				markFinish[i] = 1;
+	
 				//发送数据
-				MPI_Send(((char *)(sendBuf + i * commSize)), commSize * sizeof(int64), MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD);
+				MPI_Send(((char *)(sendBuf + offset)), commSize * sizeof(int64), MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD);
 				rnPQ.pop();
 #ifdef RENAMEDEBUG
 				std::cout << "重命名:最后向 " << i << "发送的数据：" << endl;
 				for (j = 0; j < commSize; j++) {
-					cout << sendBuf[i * commSize + j] << endl;
+					cout << sendBuf[i * commSize + j] << ",";
 				}
+				cout << endl;
 #endif
 			}
 			else {
@@ -129,28 +128,23 @@ public:
 					isCycle = 1;
 				}
 
-				sendBuf[sendCur[i]] = rank;
-				sendCur[i]++;
-				time++;
+				sendBuf[readCur[i]++] = rank;
 				rnPQ.pop();
-				//rnPQ.push(rnData[i * commSize + readCur[i]]);
-				//readCur[i]++;
 
-				if (time == commSize) {
+				if (readCur[i] == (offset + commSize)) {
 					//发送数据
-					offset = i * commSize;
 					MPI_Send((char *)(sendBuf + offset), commSize * sizeof(int64), MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD);
 
 #ifdef RENAMEDEBUG
 					std::cout << "重命名:向 " << i << "发送的数据：" << endl;
 					for (j = 0; j < commSize; j++) {
-						cout << sendBuf[offset + j] << endl;
+						cout << sendBuf[offset + j] << ",";
 					}
+					cout << endl;
 #endif
+
 					MPI_Recv((char *)(recvBuf + offset * sizeof(int64)), commSize * sizeof(int64), MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD, &status);
-					readCur[i] = i * commSize;
-					sendCur[i] = i * commSize;
-					time = 0;
+					readCur[i] = offset;
 					curBuf = (int64 *)(recvBuf + offset * sizeof(int64));
 					for (j = 0; j < commSize; j++) {
 						rnData[offset + j].setMember(curBuf[j], i);
@@ -163,7 +157,7 @@ public:
 					}
 #endif
 				}
-				rnPQ.push(rnData[readCur[i]++]);
+				rnPQ.push(rnData[readCur[i]]);
 
 			}
 		}
@@ -171,20 +165,16 @@ public:
 
 	void computeGSA(int32 level) {
 
-		//cout << "....mainNode..." << endl;
 		while (!rnPQ.empty())rnPQ.pop();
 		int64 n = 0;
 		//接受每个子节点的大小
 		int32 i, j = 0;
-		//int64 sumSize = 0;
 		for (i = 0; i < numOfChild; i++) {
 			MPI_Recv(&(sizeOfChild[i]), 1, MPI_LONG, i + 1, i + 1, MPI_COMM_WORLD, &status);
-			//cout << "the size of " << i << "is " << sizeOfChild[i] << endl;
 			n += sizeOfChild[i];
 		}
 #ifdef	SADEBUG
 		for (i = 0; i < numOfChild; i++) {
-			//MPI_Recv(&(sizeOfChild[i]), 1, MPI_LONG, i + 1, i + 1, MPI_COMM_WORLD, &status);
 			std::cout << "the size of " << i << "is " << sizeOfChild[i] << endl;
 		}
 
@@ -201,20 +191,17 @@ public:
 		computeGSAs(level, gPos);
 
 		bool isCycle = 0;
+		int64 rank = 0;
 		//rename
-		reName(level, isCycle);
-		//MPI_Recv((char *)recvBuf, commSize * sizeof(int64), MPI_CHAR, 1, 1, MPI_COMM_WORLD, &status);
-		//cout << "hhhhhhgggg" << endl;
-		//判断是否递归
-		
+		reName(level, rank, isCycle);
+
 		if (isCycle) {
-			//需要递归,接收每个节点传送过来的lms字符的全局排名
-			//isCycle = 1;
-			for (i = 0; i < numOfChild;i++)MPI_Send(&isCycle, 1, MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD);
+			for (i = 0; i < numOfChild;i++)MPI_Send(&rank, 1, MPI_LONG, i + 1, i + 1, MPI_COMM_WORLD);
 			computeGSA(level + 1);
 		}
 		else {
-			for (i = 0; i < numOfChild; i++)MPI_Send(&isCycle, 1, MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD);
+			rank = 0;
+			for (i = 0; i < numOfChild; i++)MPI_Send(&rank, 1, MPI_LONG, i + 1, i + 1, MPI_COMM_WORLD);
 		}
 
 		gPos = numOfChild;
@@ -228,21 +215,14 @@ public:
 
 	void computeGSAl(int32 level, int64 gPos) {
 		int64 recvLen= 2 * commSize * sizeof(int64) + commSize / 8 + ((level == 0) ? commSize : (commSize * sizeof(int64)));
-		int64 i, j, numFinised = 0;
-		//int32 chrOffset = 2 * commSize * sizeof(int64) + commSize / 8 + commSize / 8;
-		//int64 gPos = numOfChild + 1;
-		int64 sumSize = 0;
-		//int64 *sumChildSize = new int64[numOfChild];
-		while (!PQ.empty())PQ.pop();
+		int64 i, j,offset = 0;
+
+		while (!PQL.empty())PQL.pop();
 		for (i = 0; i < numOfChild; i++) {
-		//	sumChildSize[i] = sumSize;
-		//	sumSize += sizeOfChild[i];
-			markFinish[i] = 0;
 			readCur[i] = i * commSize;
-			sendCur[i] = i * commSize;
 			MPI_Recv((char*)recvBuf + i * recvLen, recvLen, MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD, &status);
 		}
-		//cout << "接收到初始化数据长度:"<< recvLen<<endl;
+
 		for (i = 0; i < numOfChild; i++) {
 			for (j = 0; j < commSize; j++) {
 				
@@ -250,62 +230,74 @@ public:
 						recvData[i * commSize + j].setMember(((int64 *)(recvBuf + i * recvLen))[j],
 							((int64 *)(recvBuf + i * recvLen))[commSize + j],
 							tget(i * recvLen + 2 * commSize * sizeof(int64), j),
-							//isGget(i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8 + j),
 							(recvBuf + i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8)[j],
 							i);
 					else {
 						recvData[i * commSize + j].setMember(((int64 *)(recvBuf + i * recvLen))[j],
 							((int64 *)(recvBuf + i * recvLen))[commSize + j],
 							tget(i * recvLen + 2 * commSize * sizeof(int64), j),
-						//	isGget(i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8 + j),
 							((int64 *)(recvBuf + i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8 ))[j],
 							i);
 					}
-					map[i][recvData[j].SA] = i * commSize + j;
+					map[i][recvData[i * commSize + j].SA] = i * commSize + j;
 					if (((int64 *)(recvBuf + i * recvLen))[j] == EMPTY) break;
 			}
 
 #ifdef SALDEBUG
-			if (level > 0)cout <<"level is "<<level<<" computeSAL 从 "<<i<< "接收到的数据：" << endl;
-			for (i = 0; i < numOfChild; i++) {
+			if (level > LEVELL) {
+				std::cout << "level is " << level << " computeSAL getData from " << i << "：" << endl;
 				for (j = 0; j < commSize; j++) {
-					if(level > 0)recvData[i * commSize + j].printA();
+					recvData[i * commSize + j].printA();
 				}
 			}
+			
 #endif
 		}
 		
 		for (i = 0; i < numOfChild; i++) {
-			PQ.push(recvData[readCur[i]++]);
+			PQL.push(recvData[readCur[i]]);
 		}
+		//
+#ifdef PQQ
+		cout << "比较是否相等(recvData[readCur[0]] < recvData[readCur[1] + 1]):" << (recvData[readCur[0] + 1] < recvData[readCur[1]]) << " PQ size is " << PQ.size() << endl;
+		cout << "目前PQ中的值是：" << endl;
+		vector<RecvData>tmp;
+		while (!PQ.empty())
+		{
+			RecvData a = PQ.top(); PQ.pop();
+			//对a进行操作
+			a.printA();
+			tmp.push_back(a);
+		}
+		for (i = 0; i<tmp.size(); i++) PQ.push(tmp[i]);
+#endif // PQQ
 
-		int32 time = 0;
-		RecvData temp,minVal;
-		
-		while (!PQ.empty()) {
-			//cout << "111" << endl;
-			temp = PQ.top();
+		RecvData temp,minVal;		
+		while (!PQL.empty()) {
+			temp = PQL.top();
 			i = temp.nodeId;
+			offset = i * commSize;
 			if (temp.SA == EMPTY) {
-				//cout << "向 " << i << " 发送的数据：" << endl;
-				markFinish[i] = 1;
 				//发送数据
-				MPI_Send((char *)(sendBuf + i * commSize), commSize * sizeof(int64) , MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD);
-				PQ.pop();
+				MPI_Send((char *)(sendBuf + offset), commSize * sizeof(int64) , MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD);
+				PQL.pop();
 
 				//清除对应map中的数据
 				map[i].clear();
 
 #ifdef SALDEBUG
-				if (level > 0)cout << "level is " << level << " computeSAL 最后向 " << i << " 发送的数据：" << endl;
-				for (j = 0; j < commSize; j++) {
-					if (level > 0)cout<<sendBuf[i * commSize + j]<<",";
+				if (level > LEVELL) {
+					cout << "level is " << level << " computeSAL last send data to " << i << " ：" << endl;
+					for (j = 0; j < commSize; j++) {
+						cout << sendBuf[i * commSize + j] << ",";
+						//recvData[i * commSize + j].printA();
+					}
+					cout << endl;
 				}
-				cout << endl;
+				
 #endif
 			}
 			else {
-				//cout << "222" <<endl;
 				if (minVal != temp) {
 					gPos++;
 					minVal.setMember(temp);
@@ -313,153 +305,153 @@ public:
 				j = temp.SA - 1;
 				
 
-				sendBuf[sendCur[i]++] = gPos;
-				//sendCur[i]++;
-				time++;
-				
-				if (temp.SA > 0 && map[i].find(j) != map[i].end()) {
+				sendBuf[readCur[i]++] = gPos;
+				if (j >= 0 && map[i].find(j) != map[i].end() && recvData[map[i][j]].type == L_TYPE) {
 					recvData[map[i][j]].suffixGIndex = gPos;
-					
 				}
+
+				PQL.pop();
 				
-				//cout <<"gPos is" << gPos<< " minVal is:" << endl;
-				//minVal.printA();
-				//cout << "gPos is" << gPos << endl;
-				PQ.pop();
-				
-				//readCur[i]++;
-				if (time == commSize) {
+				if (readCur[i] == (offset + commSize)) {
 					//发送数据
-					MPI_Send((char *)(sendBuf + i * commSize), commSize * sizeof(int64), MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD);
+					MPI_Send((char *)(sendBuf + offset), commSize * sizeof(int64), MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD);
 					//清除对应map中的数据
 					map[i].clear();
-					time = 0;
+					//time = 0;
 #ifdef SALDEBUG
-					if (level > 0)cout << "level is " << level << " computeSAL 向 "<<i << " 发送的数据：" << endl;
-					for (j = 0; j < commSize; j++) {
-						if (level > 0)cout << sendBuf[i * commSize + j] << ",";
+					if (level > LEVELL) {
+						cout << "level is " << level << " computeSAL send data to  " << i << " ：" << endl;
+						for (j = 0; j < commSize; j++) {
+							cout << sendBuf[i * commSize + j] << ",";
+						}
+						cout << endl;
 					}
-					cout << endl;
+					
 #endif
 					//接收数据
-					if (!markFinish[i]) {
+					//if (!markFinish[i]) {
 						MPI_Recv((char*)recvBuf + i * recvLen, recvLen, MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD, &status);
 						//转化数据
 						for (j = 0; j < commSize; j++) {
 							if (level == 0)
-								recvData[i * commSize + j].setMember(((int64 *)(recvBuf + i * recvLen))[j],
+								recvData[offset + j].setMember(((int64 *)(recvBuf + i * recvLen))[j],
 									((int64 *)(recvBuf + i * recvLen))[commSize + j],
 									tget(i * recvLen + 2 * commSize * sizeof(int64), j),
 								//	isGget(i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8 + j),
 									(recvBuf + i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8)[j],
 									i);
 							else {
-								recvData[i * commSize + j].setMember(((int64 *)(recvBuf + i * recvLen))[j],
+								recvData[offset + j].setMember(((int64 *)(recvBuf + i * recvLen))[j],
 									((int64 *)(recvBuf + i * recvLen))[commSize + j],
 									tget(i * recvLen + 2 * commSize * sizeof(int64), j),
-								//	isGget(i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8 + j),
 									((int64 *)(recvBuf + i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8))[j],
 									i);
 							}
-							map[i][recvData[j].SA] = i * commSize + j;
+							map[i][recvData[offset + j].SA] = offset + j;
+							if (((int64 *)(recvBuf + i * recvLen))[j] == EMPTY) break;
 						}
-						readCur[i] = i * commSize;
-						sendCur[i] = i * commSize;
-						
-						PQ.push(recvData[readCur[i]++]);
+						readCur[i] = offset;
 #ifdef SALDEBUG
-						if (level > 0)cout << "level is " << level << " computeSAL 从 " << i << "接收到的数据：" << endl;
-						for (i = 0; i < numOfChild; i++) {
-							for (j = 0; j < commSize; j++) {
-								if (level > 0)recvData[i * commSize + j].printA();
+						if (level > LEVELL) {
+							cout << "level is " << level << " computeSAL get data from " << i << " ：" << endl;
+							for (i = 0; i < numOfChild; i++) {
+								for (j = 0; j < commSize; j++) {
+									recvData[i * commSize + j].printA();
+								}
 							}
 						}
+						
 #endif
-					}
+				//	}
 					
 				}
-				else {
-					PQ.push(recvData[readCur[i]++]);
-				}
+				PQL.push(recvData[readCur[i]]);
 			}
 			
+#ifdef PQQ
+			cout << "目前PQ中的值是：" << endl;
+			vector<RecvData>tmp;
+			while (!PQ.empty())
+			{
+				RecvData a = PQ.top(); PQ.pop();
+				//对a进行操作
+				a.printA();
+				tmp.push_back(a);
+			}
+			for (i = 0; i<tmp.size(); i++) PQ.push(tmp[i]);
+#endif // PQQ
 		}
 		
 	}
 	
 	void computeGSAs(int32 level, int64 &gPos) {
 		int64 recvLen = 2 * commSize * sizeof(int64) + commSize / 8 + ((level == 0) ? commSize : (commSize * sizeof(int64)));
-		int64 i, j, sumSize = 0;
-		int32 chrOffset = 2 * commSize * sizeof(int64) + commSize / 8 + commSize / 8;
-		//int64 gPos = numOfChild + 1;
-		//int32 sumSize = 0;
-		//int64 *sumChildSize = new int64[numOfChild];
+		int64 i, j, offset = 0;
+
 #ifdef SASDEBUG
 		cout << "gPos is " << gPos << endl;
 #endif
-		while (!PQ.empty())PQ.pop();
+		while (!PQS.empty())PQS.pop();
 		for (i = 0; i < numOfChild; i++) {
-			//	sumChildSize[i] = sumSize;
-			//	sumSize += sizeOfChild[i];
-			markFinish[i] = 0;
 			readCur[i] = i * commSize;
-			sendCur[i] = i * commSize;
 			MPI_Recv((char*)recvBuf + i * recvLen, recvLen, MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD, &status);
 		}
 		for (i = 0; i < numOfChild; i++) {
 			for (j = 0; j < commSize; j++) {
-				if (((int64 *)(recvBuf + i * recvLen))[j] != EMPTY) {
-					if (level == 0)
-						recvData[i * commSize + j].setMember(((int64 *)(recvBuf + i * recvLen))[j],
-							((int64 *)(recvBuf + i * recvLen))[commSize + j],
-							tget(i * recvLen + 2 * commSize * sizeof(int64), j),
-							//isGget(i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8 + j),
-							(recvBuf + i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8)[j],
-							i);
-					else {
-						recvData[i * commSize + j].setMember(((int64 *)(recvBuf + i * recvLen))[j],
-							((int64 *)(recvBuf + i * recvLen))[commSize + j],
-							tget(i * recvLen + 2 * commSize * sizeof(int64), j),
-							//isGget(i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8 + j),
-							((int64 *)(recvBuf + i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8))[j],
-							i);
-					}
-					map[i][recvData[j].SA] = i * commSize + j;
+				if (level == 0)
+					recvData[i * commSize + j].setMember(((int64 *)(recvBuf + i * recvLen))[j],
+						((int64 *)(recvBuf + i * recvLen))[commSize + j],
+						tget(i * recvLen + 2 * commSize * sizeof(int64), j),
+						(recvBuf + i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8)[j],
+						i);
+				else {
+					recvData[i * commSize + j].setMember(((int64 *)(recvBuf + i * recvLen))[j],
+						((int64 *)(recvBuf + i * recvLen))[commSize + j],
+						tget(i * recvLen + 2 * commSize * sizeof(int64), j),
+						((int64 *)(recvBuf + i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8))[j],
+						i);
+				}
+				map[i][recvData[i * commSize + j].SA] = i * commSize + j;
+				if (((int64 *)(recvBuf + i * recvLen))[j] == MAX) break;
+			}
+
+#ifdef SASDEBUG
+			if (level > LEVELL) {
+				cout << "level is " << level << " computeSAS get data from " << i << "：" << endl;
+				for (j = 0; j < commSize; j++) {
+					recvData[i * commSize + j].printA();
 				}
 			}
-		}
-#ifdef SASDEBUG
-		if (level > 0)cout << "level is " << level << " computeSAS 从 " << i << "接收到的数据：" << endl;
-		for (i = 0; i < numOfChild; i++) {
-			for (j = 0; j < commSize; j++) {
-				if (level > 0)recvData[i * commSize + j].printA();
-			}
-		}
+			
 #endif
-		for (i = 0; i < numOfChild; i++) {
-			PQ.push(recvData[readCur[i]++]);
 		}
 
-		int32 time = 0, minNodeId = 0;
+		for (i = 0; i < numOfChild; i++) {
+			PQS.push(recvData[readCur[i]]);
+		}
+
+		//int32 time = 0, minNodeId = 0;
 		RecvData temp, minVal;
 
-		while (!PQ.empty()) {
-			temp = PQ.top();
+		while (!PQS.empty()) {
+			temp = PQS.top();
 			i = temp.nodeId;
-			if (temp.SA == EMPTY) {
-				markFinish[i] == 1;
+			offset = i * commSize;
+			if (temp.SA == MAX) {
 				//发送数据
-				MPI_Send((char*)(sendBuf + i * commSize), commSize * sizeof(int64), MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD);
-				PQ.pop();
+				MPI_Send((char*)(sendBuf + offset), commSize * sizeof(int64), MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD);
+				PQS.pop();
 
 				//清除对应map中的数据
 				map[i].clear();
 #ifdef SASDEBUG
-				if (level > 0)cout << "level is " << level << " computeSAS 最后向 " << i << " 发送的数据：" << endl;
-				for (j = 0; j < commSize; j++) {
-					if (level > 0)cout << sendBuf[i * commSize + j] << ",";
-				}
-				cout << endl;
+				if (level > LEVELL) {
+					cout << "level is " << level << " computeSAS last send data to " << i << " ：" << endl;
+					for (j = 0; j < commSize; j++) {
+						cout << sendBuf[i * commSize + j] << ",";
+					}
+					cout << endl;
+			}
 #endif
 
 			}
@@ -471,68 +463,69 @@ public:
 				}
 				j = temp.SA - 1;
 
-				sendBuf[sendCur[i]++] = gPos;
-				//sendCur[i]++;
-				time++;
-				if (temp.SA > 0 && map[i].find(j) != map[i].end()) {
+				sendBuf[readCur[i]++] = gPos;
+
+				if (temp.SA > 0 && map[i].find(j) != map[i].end() && recvData[map[i][j]].type == S_TYPE) {
 					recvData[map[i][j]].suffixGIndex = gPos;
 				}
-				PQ.pop();
+				PQS.pop();
 				
-			//	readCur[i]++;
-				if (time == commSize) {
+				if (readCur[i] == (offset + commSize)) {
 					//发送数据
-					MPI_Send((char*)(sendBuf + i * commSize), commSize * sizeof(int64), MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD);
+					MPI_Send((char*)(sendBuf + offset), commSize * sizeof(int64), MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD);
 					//清除对应map中的数据
 					map[i].clear();
 
 #ifdef SASDEBUG
-					if (level > 0)cout << "level is " << level << " computeSAS 向 " << i << " 发送的数据：" << endl;
-					for (j = 0; j < commSize; j++) {
-						if (level > 0)cout << sendBuf[i * commSize + j] << ",";
+					if (level > LEVELL) {
+						cout << "level is " << level << " computeSAS send data to " << i << " ：" << endl;
+						for (j = 0; j < commSize; j++) {
+							cout << sendBuf[i * commSize + j] << ",";
+						}
+						cout << endl;
 					}
-					cout << endl;
+					
 #endif
 					//接收数据
-					if (!markFinish[i]) {
+				//	if (!markFinish[i]) {
 						MPI_Recv((char*)recvBuf + i * recvLen, recvLen, MPI_CHAR, i + 1, i + 1, MPI_COMM_WORLD, &status);
 						//转化数据
 						for (j = 0; j < commSize; j++) {
 							if (level == 0)
-								recvData[i * commSize + j].setMember(((int64 *)(recvBuf + i * recvLen))[j],
+								recvData[offset + j].setMember(((int64 *)(recvBuf + i * recvLen))[j],
 									((int64 *)(recvBuf + i * recvLen))[commSize + j],
 									tget(i * recvLen + 2 * commSize * sizeof(int64), j),
 									//isGget(i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8 + j),
 									(recvBuf + i * recvLen + 2 * commSize * sizeof(int64)  + commSize / 8)[j],
 									i);
 							else {
-								recvData[i * commSize + j].setMember(((int64 *)(recvBuf + i * recvLen))[j],
+								recvData[offset + j].setMember(((int64 *)(recvBuf + i * recvLen))[j],
 									((int64 *)(recvBuf + i * recvLen))[commSize + j],
 									tget(i * recvLen + 2 * commSize * sizeof(int64), j),
 									//isGget(i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8 + j),
 									((int64 *)(recvBuf + i * recvLen + 2 * commSize * sizeof(int64) + commSize / 8))[j],
 									i);
 							}
-							map[i][recvData[j].SA] = i * commSize + j;
+							map[i][recvData[offset + j].SA] = offset + j;
+							if (((int64 *)(recvBuf + i * recvLen))[j] == MAX) break;
 						}
-						readCur[i] = i * commSize;
-						sendCur[i] = i * commSize;
-						time = 0;
-						PQ.push(recvData[readCur[i]++]);
+						readCur[i] = offset;
+						//sendCur[i] = offset;
+						//time = 0;
+						//PQ.push(recvData[readCur[i]++]);
 #ifdef SASDEBUG
-						if (level > 0)cout << "level is " << level << " computeSAS 从 " << i << "接收到的数据：" << endl;
-						for (i = 0; i < numOfChild; i++) {
+						if (level > LEVELL) {
+							cout << "level is " << level << " computeSAS get data from " << i << "：" << endl;
 							for (j = 0; j < commSize; j++) {
-								if (level > 0)recvData[i * commSize + j].printA();
+								recvData[i * commSize + j].printA();
 							}
 						}
+						
 #endif
-					}
+		//			}
 
 				}
-				else {
-					PQ.push(recvData[readCur[i]++]);
-				}
+				PQS.push(recvData[readCur[i]]);
 			}
 
 		}
@@ -542,13 +535,11 @@ public:
 	~MainNode()
 	{
 		delete[] sizeOfChild;
-		delete[] markFinish;
 		delete[] recvBuf;
 		delete[] sendBuf;
 		delete[] map;
 		delete[] recvData;
 		delete[] readCur;
-		delete[] sendCur;
 	}
 };
 #endif
