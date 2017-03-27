@@ -28,6 +28,7 @@ using int64 = long long int;
 using uint64 = unsigned long long int;
 #endif
 
+using uint_type = int32;
 
 struct MyFile {
 	int64 size;
@@ -40,7 +41,7 @@ public:
 	static void write(T * _ta, std::string _fn, int64 _n, std::ios_base::openmode _mode, int64 _offset);
 	static void read(T * _ta, std::string _fn, int64 _n, std::ios_base::openmode _mode, int64 _offset);
 	static int64 getFileLenCh(std::string _fn);
-	static void getFilesUnderDir(std::string _fn,std::vector<MyFile>& files);
+	static void getFilesUnderDir(std::string _fn, std::vector<MyFile>& files);
 	static bool compareFile(MyFile &file1, MyFile &file2);
 
 	static void getFilesInOrder(std::string _fn, std::vector<MyFile>& files);
@@ -109,178 +110,34 @@ int64 MyIO<T>::getFileLenCh(std::string _fn) {
 //}
 //
 
-constexpr int32 commSize=1024;
+constexpr int32 commSize = 4;
 constexpr bool L_TYPE = 0;
 constexpr bool S_TYPE = 1;
 constexpr int32 MAINNODEID = 0;
 unsigned char mask[] = { 0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01 };
 const int64 EMPTY = 0xffffffffffffffff;
-const int64 MAX = (std::numeric_limits<int64>::max)();
-
-
+const uint_type MAXU = (std::numeric_limits<uint_type>::max)();
+const uint_type MAXC = (std::numeric_limits<unsigned char>::max)();
+const uint_type MINU = (std::numeric_limits<uint_type>::min)();
+const uint_type MINC = (std::numeric_limits<unsigned char>::min)();
 
 #if _MSC_VER
 #pragma pack(push, 1)
 #endif
-
-//template<typename T>
-//struct CommunicateData {
-//	int64 suffixGIndex, pos;
-//	bool isGlobal, type;
-//	T data;
-//
-//	CommunicateData(bool typeT, T dataT, bool isGlobalT, int64 suffixGIndexT, int64 posC) {
-//		pos = posC;
-//		type = typeT;
-//		data = dataT;
-//		isGlobal = isGlobalT;
-//		suffixGIndex = suffixGIndexT;
-//	}
-//
-//	/*CommunicateData(ChildMetaData<T> dataC) {
-//	type = dataC.type;
-//	data = dataC.data;
-//	isGlobal = dataC.isGlobal;
-//	suffixGIndex = dataC.suffixGIndex;
-//	}*/
-//
-//	/*void setMember(ChildMataData &val) {
-//	lastCharIndex = val.lastCharGIndex;
-//	data = val.data;
-//	globalIndex = val.globalIndex;
-//	}*/
-//
-//	CommunicateData() {
-//		suffixGIndex = 0;
-//		isGlobal = 0;
-//		type = 0;
-//		data = 0;
-//		pos = 0;
-//	}
-//
-//	bool operator < (CommunicateData<T> &other) const
-//	{
-//		if (data < other.data)return true;
-//		if (data > other.data)return false;
-//		if (type < other.type)return true;
-//		if (type > other.type)return false;
-//		if (suffixGIndex < other.suffixGIndex)return true;
-//		return false;
-//	}
-//
-//	bool operator > (CommunicateData<T> &other) const
-//	{
-//		if (data > other.data)return true;
-//		if (data < other.data)return false;
-//		if (type > other.type)return true;
-//		if (type < other.type)return false;
-//		if (suffixGIndex > other.suffixGIndex)return true;
-//		return false;
-//	}
-//
-//	bool operator == (CommunicateData<T> &other) const
-//	{
-//		if (data == other.data && type == other.type && suffixGIndex == other.suffixGIndex)return true;
-//		return false;
-//	}
-//
-//	void printA() {
-//		std::cout << "<" << isGlobal << "," << suffixGIndex << "," << data << ">" << std::endl;
-//	}
-//}
-
-struct ReNameData {
-	int64 index;
-	int32 nodeId;
-
-	ReNameData(int64 indexC, int64 nodeIdC) {
-		index = indexC;
-		nodeId = nodeIdC;
-	}
-
-	ReNameData(const ReNameData &other) {
-		index = other.index;
-		nodeId = other.nodeId;
-	}
-
-	void setMember(int64 indexC, int64 nodeIdC) {
-		index = indexC;
-		nodeId = nodeIdC;
-	}
-
-	void setMember(const ReNameData &other) {
-		index = other.index;
-		nodeId = other.nodeId;
-	}
-	/*CommunicateData(ChildMetaData<T> dataC) {
-	type = dataC.type;
-	data = dataC.data;
-	isGlobal = dataC.isGlobal;
-	suffixGIndex = dataC.suffixGIndex;
-	}*/
-
-	/*void setMember(ChildMataData &val) {
-	lastCharIndex = val.lastCharGIndex;
-	data = val.data;
-	globalIndex = val.globalIndex;
-	}*/
-
-	ReNameData() {
-		index = 0;
-		nodeId = 0;
-	}
-
-	bool operator<(const ReNameData &other) const
-	{
-		if (index < other.index)return true;
-		return false;
-	}
-
-	bool operator>(const ReNameData &other) const
-	{
-		if (index > other.index)return true;
-		return false;
-	}
-
-	bool operator==(const ReNameData &other) const
-	{
-		if (index == other.index)return true;
-		return false;
-	}
-
-	bool operator!=(const ReNameData &other) const
-	{
-		if (index != other.index)return true;
-		return false;
-	}
-
-	void printA() {
-		std::cout << "<" << index << "," << nodeId << ">" << std::endl;
-	}
-}
-
-#if _MSC_VER
-;
-#pragma pack(pop)
-#pragma pack(push, 1)
-#else
-__attribute__((packed));
-#endif
-
-
+template <typename T>
 struct RecvData {
-	int64 suffixGIndex, SA;
+	uint_type suffixGIndex;
+	int32 prePos;
 	bool  type;
-	int64 data;
-	int32 nodeId;
+	T data;
 
-	RecvData(int64 SAC, int64 suffixGIndexT, bool typeT, int64 dataT, int32 nodeIdC) {
+
+	RecvData(int32 prePosC, uint_type suffixGIndexT, bool typeT, T dataT) {
 		type = typeT;
 		data = dataT;
 		//isGlobal = isGlobalT;
 		suffixGIndex = suffixGIndexT;
-		SA = SAC;
-		nodeId = nodeIdC;
+		prePos = prePosC;
 	}
 
 	RecvData() {
@@ -288,32 +145,29 @@ struct RecvData {
 		//isGlobal = 0;
 		type = 0;
 		data = 0;
-		SA = 0;
-		nodeId = 0;
+		prePos = 0;
 	}
 
-	void setMember(int64 SAC, int64 suffixGIndexT, bool typeT, int64 dataT, int32 nodeIdC) {
+	void setMember(int64 prePosC, int64 suffixGIndexT, bool typeT, T dataT) {
 		type = typeT;
 		data = dataT;
 		//isGlobal = isGlobalT;
 		suffixGIndex = suffixGIndexT;
-		SA = SAC;
-		nodeId = nodeIdC;
+		prePos = prePosC;
 	}
 
-	void setMember(const RecvData & other) {
+	void setMember(const RecvData<T> & other) {
 		type = other.type;
 		data = other.data;
 		//isGlobal = isGlobalT;
 		suffixGIndex = other.suffixGIndex;
-		SA = other.SA;
-		nodeId = other.nodeId;
+		prePos = other.prePos;
 	}
 
-	bool operator<(const RecvData &other) const
+	bool operator<(const RecvData<T> &other) const
 	{
 		//if(!isGlobal || !other.isGlobal)std::cout << "不是全局变量不能比较<" << std::endl;
-		if (this == nullptr) return true;
+		//if (this == nullptr) return true;
 		if (data < other.data)return true;
 		if (data > other.data)return false;
 		if (type < other.type)return true;
@@ -322,9 +176,9 @@ struct RecvData {
 		return false;
 	}
 
-	bool operator>(const RecvData &other) const
+	bool operator>(const RecvData<T> &other) const
 	{
-		if (this == nullptr) return true;
+		//if (this == nullptr) return true;
 		//if (!isGlobal || !other.isGlobal)std::cout << "不是全局变量不能比较>" << std::endl;
 		if (data > other.data)return true;
 		if (data < other.data)return false;
@@ -334,81 +188,80 @@ struct RecvData {
 		return false;
 	}
 
-	bool operator==(const RecvData &other) const
+	bool operator==(const RecvData<T> &other) const
 	{
-		if (this == nullptr) return true;
+		//if (this == nullptr) return true;
 		//if (!isGlobal || !other.isGlobal)std::cout << "不是全局变量不能比较==" << std::endl;
 		if ((data == other.data) && (type == other.type) && (suffixGIndex == other.suffixGIndex))return true;
 		return false;
 	}
 
-	bool operator!=(const RecvData &other) const
+	bool operator!=(const RecvData<T> &other) const
 	{
-		if (this == nullptr) return true;
+		//if (this == nullptr) return true;
 		//if (!isGlobal || !other.isGlobal)std::cout << "不是全局变量不能比较==" << std::endl;
 		if ((data != other.data) || (type != other.type) || (suffixGIndex != other.suffixGIndex))return true;
 		return false;
 	}
 
 	void printA() {
-		std::cout << "<" << data << "," << nodeId << "," << type << "," << SA << "," << suffixGIndex << ">" << std::endl;
+		std::cout << "<" << (int32)data << "," << prePos << "," << type << "," << suffixGIndex << ">" << std::endl;
 	}
 }
-//#if _MSC_VER
-//;
-//#pragma pack(pop)
-//#pragma pack(push, 1)
-//#else
-//__attribute__((packed));
-//#endif
-//
-//
-//struct MainNodeMetaData {
-//	int64 globalIndex, lastCharIndex,fromNodeId,currentIndex;
-//	unsigned char data;
-//
-//	void setMember(ChildMataData &val,int32 nodeId) {
-//		lastCharIndex = val.lastCharGIndex;
-//		data = val.data;
-//		globalIndex = val.globalIndex;
-//		fromNodeId = nodeId;
-//		currentIndex = val.currentIndex;
-//	}
-//
-//	MainNodeMetaData() {
-//		fromNodeId = 0;
-//		globalIndex = 0;
-//		lastCharIndex = 0;
-//		data = 0;
-//		currentIndex = 0;
-//	}
-//
-//	MainNodeMetaData(int64 lastCI, unsigned char dataI) {
-//		lastCharIndex = lastCI;
-//		data = dataI;
-//	}
-//
-//	bool operator < (MainNodeMetaData &other) const
-//	{
-//		if (data < other.data)return true;
-//		if (data > other.data)return false;
-//		if (lastCharIndex < other.lastCharIndex)return true;
-//		return false;
-//	}
-//
-//	bool operator > (MainNodeMetaData &other) const
-//	{
-//		if (data > other.data)return true;
-//		if (data < other.data)return false;
-//		if (lastCharIndex > other.lastCharIndex)return true;
-//		return false;
-//	}
-//
-//
-//	void printA() {
-//		std::cout << "<" << fromNodeId <<","<< globalIndex << "," << lastCharIndex << "," << data << ">" << std::endl;
-//	}
-//}
+
+
+
+#if _MSC_VER
+;
+#pragma pack(pop)
+#pragma pack(push, 1)
+#else
+__attribute__((packed));
+#endif
+
+
+template <typename T>
+struct SendData {
+	uint_type suffixGIndex;
+	int32 prePos;
+	bool  type;
+	T data;
+
+
+	SendData(int64 prePosC, int64 suffixGIndexT, bool typeT, T dataT) {
+		type = typeT;
+		data = dataT;
+		//isGlobal = isGlobalT;
+		suffixGIndex = suffixGIndexT;
+		prePos = prePosC;
+	}
+
+	SendData() {
+		suffixGIndex = 0;
+		type = 0;
+		data = 0;
+		prePos = 0;
+	}
+
+	void setMember(int64 prePosC, int64 suffixGIndexT, bool typeT, T dataT) {
+		type = typeT;
+		data = dataT;
+		suffixGIndex = suffixGIndexT;
+		prePos = prePosC;
+	}
+
+	void setMember(const SendData<T> & other) {
+		type = other.type;
+		data = other.data;
+		suffixGIndex = other.suffixGIndex;
+		prePos = other.prePos;
+	}
+
+
+	void printA() {
+		std::cout << "<" << data << "," << prePos << "," << type << "," << suffixGIndex << ">" << std::endl;
+	}
+}
 
 #if _MSC_VER
 ;
@@ -417,40 +270,11 @@ struct RecvData {
 __attribute__((packed));
 #endif
 
-//class MPIDataType {
-//public:
-//	static void  constructMPIDataType(MPI_Datatype &myDataType) {
-//		CommunicateData b;
-//		//下面构建一个自定义变量，利用MPI函数构建，若用C语言的结构体
-//		//则在Send和Recv是不能识别数据类型
-//
-//		MPI_Datatype old_types[2];
-//		MPI_Aint indices[2];
-//		//指定每个块中的变量个数,这里只有2个块，其中包含4个MPI_INT,6个MPI_FLOAT
-//		int32 blocklens[2];
-//		blocklens[0] = 2;
-//		blocklens[1] = 1;
-//		//指定原来旧的数据类型
-//		old_types[0] = MPI_LONG;
-//		old_types[1] = MPI_UNSIGNED_CHAR;
-//		//指定每个块中变量的偏移量，需要依靠一个结构体的实例，这里是b。
-//		MPI_Address(&b, &indices[0]);
-//		MPI_Address(&b.data, &indices[1]);
-//		indices[1] -= indices[0];
-//		//std::cout << indices[1] << std::endl;
-//		indices[0] = 0;
-//		//看来indices[0]也可以一开始就应当赋值为0
-//		//创建新数据于myDataType之中
-//		MPI_Type_struct(2, blocklens, indices, old_types, &myDataType);
-//		//注册新数据
-//		MPI_Type_commit(&myDataType);
-//	}
-//};
 
 template <typename T>
 class MPIComm {
 public:
-	static void send(T* data,int32 size,int32 dest,int32 tag);
+	static void send(T* data, int32 size, int32 dest, int32 tag);
 	static void recv(T* data, int32 size, int32 dest, int32 tag, MPI_Status &status);
 };
 
@@ -460,8 +284,194 @@ void MPIComm<T>::send(T* data, int32 size, int32 dest, int32 tag) {
 }
 
 template <typename T>
-void MPIComm<T>::recv(T* data, int32 size, int32 dest, int32 tag, MPI_Status &status){
+void MPIComm<T>::recv(T* data, int32 size, int32 dest, int32 tag, MPI_Status &status) {
 	MPI_Recv((char*)data, size * sizeof(T) / sizeof(char), MPI_CHAR, dest, tag, MPI_COMM_WORLD, &status);
 }
 
+struct MarkData {
+public:
+	int64 isCycle;
+	int64 isSelfCom;
+
+	MarkData() {
+		isCycle = 0;
+		isSelfCom = 0;
+	}
+
+	void print() {
+		std::cout <<"<"<< isCycle << "," << isSelfCom <<">"<< std::endl;
+	}
+};
+
+template <typename T>
+class LoserTree {
+public:
+	T *myData = nullptr;
+	int32 *ls = nullptr;
+	int32 k;
+	int32 finishNum;
+	T MaxData;
+	T MinData;
+	LoserTree() {
+		//MaxData = MaxData1;
+		//MinData = MinData1;
+		//MaxData.setMember(0, MAXU, 1, (std::numeric_limits<T>::max)());
+		//MinData.setMember(0, MINU, 0, (std::numeric_limits<T>::min)());
+	}
+
+	void setMAXMIN(T MinData1, T MaxData1) {
+		MaxData = MaxData1;
+		MinData = MinData1;
+	}
+	void initTree(int32 numOfChild) {
+		k = numOfChild;
+		finishNum = 0;
+		if (myData == nullptr) {
+			myData = new T[numOfChild + 1];
+			/*for (int32 i = numOfChild ; i >= 0 ; i--) {
+			T temp;
+			myData[i] = temp;
+			}*/
+		}
+		myData[numOfChild] = MinData;
+		if (ls == nullptr) ls = new int32[numOfChild];
+
+		for (int32 i = 0; i < numOfChild; i++) {
+			ls[i] = numOfChild;
+		}
+
+	}
+
+	void setVal(int32 i, const T &val) {
+		myData[i] = val;
+	}
+
+	void setAndFresh(int32 i, const T &val) {
+		setVal(i, val);
+		adjust(i);
+	}
+
+	void setPosFinsih(int32 i) {
+		finishNum++;
+		//std::cout << "finishNum is " << finishNum<<std::endl;
+		//MaxData.printA();
+		setVal(i, MaxData);
+		adjust(i);
+		//myData[i].printA();
+		//cout << "目前容器中的值是：" << endl;
+		//for (int32 j = 0; j < k;j++)myData[j].printA();
+	}
+
+	void adjust(int32 s)
+	{
+		int32 t = (s + k) / 2;
+		int32 temp = 0;
+		while (t>0)
+		{
+			if (myData[s] > myData[ls[t]])
+			{
+				temp = s;
+				s = ls[t];
+				ls[t] = temp;
+			}
+			t = t / 2;
+		}
+		ls[0] = s;
+	}
+
+	void CreateLoserTree()
+	{
+		int32 i;
+		for (i = k - 1; i >= 0; i--)adjust(i);
+	}
+
+	bool isFinish() {
+		return finishNum == k;
+	}
+	int32 getMinIndx() {
+		return ls[0];
+	}
+};
+
+template <typename T>
+class VictoryTree {
+public:
+	RecvData<T> *myData = nullptr;
+	int32 *ls = nullptr;
+	int32 k;
+	int32 finishNum;
+	RecvData<T> MinData;
+	RecvData<T> MaxData;
+	VictoryTree() {
+		MinData.setMember(0, MINU, 0, (std::numeric_limits<T>::min)());
+		MaxData.setMember(0, MAXU, 1, (std::numeric_limits<T>::max)());
+	}
+
+	void initTree(int32 numOfChild) {
+		k = numOfChild;
+		finishNum = 0;
+		if (myData == nullptr) {
+			myData = new RecvData<T>[numOfChild + 1];
+			for (int32 i = numOfChild; i >= 0; i--) {
+				RecvData<T> temp;
+				myData[i] = temp;
+			}
+		}
+		myData[numOfChild].setMember(MaxData);
+		if (ls == nullptr) ls = new int32[numOfChild];
+
+		for (int32 i = 0; i < numOfChild; i++) {
+			ls[i] = numOfChild;
+		}
+
+	}
+
+	void setVal(int32 i, const RecvData<T> &val) {
+		myData[i].setMember(val);
+	}
+
+	void setAndFresh(int32 i, const RecvData<T> &val) {
+		setVal(i, val);
+		adjust(i);
+	}
+
+	void setPosFinsih(int32 i) {
+		finishNum++;
+		setVal(i, MinData);
+		adjust(i);
+	}
+
+	void adjust(int32 s)
+	{
+		int32 t = (s + k) / 2;
+		int32 temp = 0;
+		while (t>0)
+		{
+			if (myData[s] < myData[ls[t]])
+			{
+				temp = s;
+				s = ls[t];
+				ls[t] = temp;
+			}
+			t = t / 2;
+		}
+		ls[0] = s;
+	}
+
+	void CreateVictoryTree()
+	{
+		int32 i;
+		for (i = k - 1; i >= 0; i--)adjust(i);
+		//cout << "目前容器中的值是：" << endl;
+		//for (int32 j = 0; j < k;j++)myData[j].printA();
+		//cout << "目前容器中的最大值下标值是：" << getMaxIndx()<< endl;
+	}
+
+	bool isFinish() {
+		return finishNum == k;
+	}
+	int32 getMaxIndx() {
+		return ls[0];
+	}
+};
 #endif

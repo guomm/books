@@ -12,9 +12,10 @@ using namespace std;
 
 //#define DEBUG_HEAP
 
-//#define MPIDEBUG
-#define RESULT
+#define MPIDEBUG
+//#define RESULT
 
+//#define LOSERTREE
 int main(int argc, char* argv[])
 {
 #ifdef MPIDEBUG
@@ -22,12 +23,13 @@ int main(int argc, char* argv[])
 	MPI_Init(&argc, &argv);
 	MPI_Comm_rank(MPI_COMM_WORLD, &myid);
 	MPI_Comm_size(MPI_COMM_WORLD, &numproces);
-
+	//cout << "sendData " << sizeof(SendData<unsigned char>) << "," << sizeof(SendData<uint_type>) << endl;
+	//cout << "recvData " << sizeof(RecvData<unsigned char>) << "," << sizeof(RecvData<uint_type>) << endl;
 	string path("D://test//process");
 	if (myid == MAINNODEID) {
 		MainNode mainNode(numproces - 1);
 		mainNode.compute();
-		cout << "mainNode is over" << endl;
+		cout << "mainNode is over, communicate traffic is "<<(double)(mainNode.commColumn)/1024/1024 <<" M, communicate time is "<<(double)(mainNode.commTime)/CLOCKS_PER_SEC << endl;
 	}
 	else {
 		ChildNode childNode(myid);
@@ -49,7 +51,7 @@ int main(int argc, char* argv[])
 	MyIO<unsigned char>::read(data+n1+1, fileName2, n2, std::ios_base::in | std::ios_base::binary, 0);
 	data[n - 1] = 0;
 	data[n - 2] = 2;
-	int64 *SA = new int64[n];
+	uint_type *SA = new uint_type[n];
 	SA_IS(data,SA,n,256,sizeof(char),0);
 
 	/*cout << "data is :";
@@ -66,12 +68,12 @@ int main(int argc, char* argv[])
 	fileName1 = "D://test//result1.txt";
 	fileName2 = "D://test//result2.txt";
 
-	int64 *GRANK = new int64[n];
+	uint_type *GRANK = new uint_type[n];
 	n1 = MyIO<char>::getFileLenCh(fileName1);
 	n2 = MyIO<char>::getFileLenCh(fileName2);
 	//SACP[0] = n - 1;
 	//int64 *GRANK2 = new int64[n2];
-	MyIO<int64>::read(GRANK, fileName1, n1/8, std::ios_base::in | std::ios_base::binary, 0);
+	MyIO<uint_type>::read(GRANK, fileName1, n1/sizeof(uint_type), std::ios_base::in | std::ios_base::binary, 0);
 
 	/*cout << "GRank1 is :";
 	for (int64 i = 0; i < n1; i++) {
@@ -79,7 +81,7 @@ int main(int argc, char* argv[])
 	}
 	cout << endl;*/
 
-	MyIO<int64>::read(GRANK+ n1 / 8, fileName2, n2/8, std::ios_base::in | std::ios_base::binary, 0);
+	MyIO<uint_type>::read(GRANK+ n1 / sizeof(uint_type), fileName2, n2/ sizeof(uint_type), std::ios_base::in | std::ios_base::binary, 0);
 
 	/*cout << "GRank2 is :";
 	for (int64 i = 0; i < n2; i++) {
@@ -113,62 +115,24 @@ int main(int argc, char* argv[])
 
 
 	for (int64 i = 0; i < n; i++) {
-		if (SA[i] != sacmp[i])cout << "i is "<<i<<" error" <<"SA is "<< SA[i] <<" sacmp is "<<sacmp[i]<< endl;
+		if (SA[i] != sacmp[i])cout << "i is "<<i<<" error " <<"SA is "<< SA[i] <<" sacmp is "<<sacmp[i]<< endl;
 	}
 	cout << "success.." << endl;
 	cin.get();
 #endif
 	
+#ifdef LOSERTREE
+
+#endif // LOSERTREE
+
+
+
+
+
+
+
 	//system("pause");  
 	return 0;
 
-#ifdef DEBUG_HEAP
-	MinHeap hp;
-	CommunicateData d1(1, 'a');
-	hp.Insert(d1);
-	//int max;
-	std::cout << "目前堆中最大值为：" << hp.Get_Min().data << std::endl;
-	hp.DeleteMin();
-	std::cout << "删除的堆中最大的元素为：" << hp.Get_Min().data << std::endl;
-	//cout << "删除后，现在堆中最大的元素为：" << hp.Get_Max() << endl;
-	std::cout << "现在堆的大小为：" << hp.Get_Size() << std::endl;
-	std::cout << "向堆中插入新元素" << std::endl;
-//	CommunicateData<8> d1(1, 2);
-	CommunicateData d2(1, 'c');
-	CommunicateData d3(1, 'b');
-	CommunicateData d4(1, 'f');
-	CommunicateData d5(2, 'e');
-	CommunicateData d6(2, 'a');
-	CommunicateData d7(2, 'c');
-	hp.Insert(d1);
-	hp.Insert(d2);
-	hp.Insert(d3);
-	hp.Insert(d4);
-	hp.Insert(d5);
-	hp.Insert(d6);
-	hp.Insert(d7);
-	cout << (d1 < d2) << endl;
-	cout << (d1 < d6) << endl;
-	cout << (d2 > d1) << endl;
-	cout << (d6 > d2) << endl;
-	std::cout << "插入后现在堆的大小为：" << hp.Get_Size() << endl;
 
-	std::cout << "现在由小到大输出堆中元素" << endl;
-	//hp.printHeap();
-	//cout << ".................\n";
-	do
-	{
-		CommunicateData temp = hp.DeleteMin();
-
-		temp.printA();
-		//hp.printHeap();
-		//cout << ".................\n";
-	} while (hp.Get_Size()>0);
-
-	//std::cout << endl;
-#endif
-	//cout << sizeof(CommunicateData) << endl;
-	/*string path("D://test//process");
-	checkGSA(path, 3);
-	std::cin.get();*/
 }
